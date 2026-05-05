@@ -3,13 +3,15 @@ from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 
 # ১. Streamlit secrets থেকে API Key লোড করা (এটি অনলাইনে হোস্ট করার জন্য নিরাপদ)
-google_api_key = st.secrets["GOOGLE_API_KEY"]
+# যদি লোকাললি বা কোডস্পেসে ট্রাই করেন, তবে secrets এর বদলে সরাসরি "YOUR_API_KEY" বসাতে পারেন
+os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
 # ২. PDF ফাইল থেকে লেখা (Text) পড়ার ফাংশন
 def get_pdf_text(pdf_docs):
@@ -26,57 +28,59 @@ def get_text_chunks(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
-# ৪. ডাটাবেস তৈরি এবং সেভ করার ফাংশন
+# ৪. টেক্সট টুকরোগুলোকে ভেক্টর স্টোরে রূপান্তর করা (FAISS)
 def get_vector_store(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-# ৫. চ্যাটবটের লজিক এবং প্রম্পট সেটআপ
+# ৫. চ্যাটবটের জন্য প্রশ্ন-উত্তরের চেইন তৈরি করা
 def get_conversational_chain():
     prompt_template = """
-    প্রদত্ত কনটেক্সট (Context) থেকে যতটা সম্ভব বিস্তারিত উত্তর দাও। যদি উত্তরটি ফাইলের ভেতর না থাকে 
-    তবে শুধু বলো "দুঃখিত, এই তথ্যটি ফাইলে নেই", ভুল উত্তর বানাবে না।
-    সবসময় প্রশ্নের উত্তর বাংলায় দিবে।\n\n
+    Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
+    provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
     Context:\n {context}?\n
     Question: \n{question}\n
 
     Answer:
     """
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3, google_api_key=google_api_key)
+    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3)
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     return chain
 
-# ৬. ইউজারের ইনপুট প্রসেস করার ফাংশন
+# ৬. ব্যবহারকারীর প্রশ্নের উত্তর দেওয়ার ফাংশন
 def user_input(user_question):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     docs = new_db.similarity_search(user_question)
     chain = get_conversational_chain()
     
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    st.write("বট: ", response["output_text"])
+    response = chain(
+        {"input_documents": docs, "question": user_question},
+        return_only_outputs=True
+    )
+    st.write("Reply: ", response["output_text"])
 
-# ৭. প্রধান ইউজার ইন্টারফেস (Streamlit Main App)
+# ৭. মূল অ্যাপ ইন্টারফেস (Streamlit UI)
 def main():
-    st.set_page_config("Bangla PDF Chatbot")
-    st.header("PDF চ্যাটবট (AI Assistant) 💬")
+    st.set_page_config("Chat with PDF")
+    st.header("Chat with multiple PDF using Gemini💁")
 
-    user_question = st.text_input("আপনার PDF সম্পর্কে বাংলায় প্রশ্ন করুন")
+    user_question = st.text_input("Ask a Question from the PDF Files")
 
     if user_question:
         user_input(user_question)
 
     with st.sidebar:
-        st.title("মেনু ও ফাইল আপলোড")
-        pdf_docs = st.file_uploader("আপনার PDF ফাইলটি এখানে আপলোড করুন", accept_multiple_files=True)
-        if st.button("ফাইল প্রসেস করুন"):
-            with st.spinner("অপেক্ষা করুন, আপনার ফাইলটি পড়া হচ্ছে..."):
+        st.title("Menu:")
+        pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button", accept_multiple_files=True)
+        if st.button("Submit & Process"):
+            with st.spinner("Processing..."):
                 raw_text = get_pdf_text(pdf_docs)
                 text_chunks = get_text_chunks(raw_text)
                 get_vector_store(text_chunks)
-                st.success("প্রসেসিং শেষ! এখন আপনি প্রশ্ন করতে পারেন।")
+                st.success("Done")
 
 if __name__ == "__main__":
     main()
