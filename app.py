@@ -10,13 +10,18 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 
-# 1. API Key Setup
+# -----------------------------
+# 1. API KEY SETUP
+# -----------------------------
 if "GOOGLE_API_KEY" in st.secrets:
     os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 else:
     st.error("Please set GOOGLE_API_KEY in Streamlit Secrets")
 
-# 2. Read PDF
+
+# -----------------------------
+# 2. READ PDF
+# -----------------------------
 def get_pdf_text(pdf_docs):
     text = ""
     for pdf in pdf_docs:
@@ -24,10 +29,13 @@ def get_pdf_text(pdf_docs):
         for page in pdf_reader.pages:
             content = page.extract_text()
             if content:
-                text += content
+                text += content + "\n"
     return text
 
-# 3. Split Text
+
+# -----------------------------
+# 3. SPLIT TEXT
+# -----------------------------
 def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=10000,
@@ -35,27 +43,36 @@ def get_text_chunks(text):
     )
     return text_splitter.split_text(text)
 
-# 4. Create Vector Store
+
+# -----------------------------
+# 4. CREATE VECTOR STORE
+# -----------------------------
 def get_vector_store(text_chunks):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-# 5. Create QA Chain (UPDATED)
+
+# -----------------------------
+# 5. QA CHAIN
+# -----------------------------
 def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context.
-    If the answer is not in the context, say:
-    "answer is not available in the context"
+You are a helpful assistant for answering questions based only on the given context.
 
-    Context:
-    {context}
+Rules:
+- Use ONLY the context below
+- If answer is not in context, say: "Answer is not available in the provided context"
+- Be clear and structured
 
-    Question:
-    {question}
+Context:
+{context}
 
-    Answer:
-    """
+Question:
+{question}
+
+Answer:
+"""
 
     model = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash",
@@ -70,32 +87,45 @@ def get_conversational_chain():
     chain = create_stuff_documents_chain(model, prompt)
     return chain
 
-# 6. User Question Handling
+
+# -----------------------------
+# 6. USER INPUT HANDLER
+# -----------------------------
 def user_input(user_question):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
     if os.path.exists("faiss_index"):
-        db = FAISS.load_local(
-            "faiss_index",
-            embeddings,
-            allow_dangerous_deserialization=True
-        )
+        try:
+            db = FAISS.load_local(
+                "faiss_index",
+                embeddings,
+                allow_dangerous_deserialization=True
+            )
+        except Exception as e:
+            st.error(f"Error loading vector store: {e}")
+            return
 
         docs = db.similarity_search(user_question)
+
+        # Convert docs → text
+        context_text = "\n\n".join([doc.page_content for doc in docs])
 
         chain = get_conversational_chain()
 
         response = chain.invoke({
-            "context": docs,
+            "context": context_text,
             "question": user_question
         })
 
-        st.write("Reply:", response)
+        st.write("Reply:", response.content)
 
     else:
         st.error("Please upload and process PDFs first")
 
+
+# -----------------------------
 # 7. UI
+# -----------------------------
 def main():
     st.set_page_config(page_title="Chat with PDF", page_icon="📄")
     st.header("Chat with PDF using Gemini 🤖")
@@ -126,6 +156,7 @@ def main():
                         st.error("No text found in PDF")
             else:
                 st.error("Upload at least one PDF")
+
 
 if __name__ == "__main__":
     main()
