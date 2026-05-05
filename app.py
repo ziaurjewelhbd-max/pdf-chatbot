@@ -4,11 +4,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
+
+# মডিউল আমদানিতে পরিবর্তন আনা হয়েছে (নতুন ভার্সনের জন্য)
 from langchain.chains.question_answering import load_qa_chain
 from langchain_community.vectorstores import FAISS
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate # এখানে পরিবর্তন করা হয়েছে
 
-# ১. API Key সেটআপ (Streamlit Secrets থেকে)
+# ১. API Key সেটআপ
 if "GOOGLE_API_KEY" in st.secrets:
     os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 else:
@@ -48,9 +50,9 @@ def get_conversational_chain():
 
     Answer:
     """
-    # Gemini 1.5 Flash দ্রুত এবং কার্যকরী
     model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    # সঠিক চেইন লোডিং
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     return chain
 
@@ -58,13 +60,13 @@ def get_conversational_chain():
 def user_input(user_question):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     
-    # FAISS ইনডেক্স লোড করা
     if os.path.exists("faiss_index"):
+        # এখানে allow_dangerous_deserialization=True দেওয়া ঠিক আছে
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
         chain = get_conversational_chain()
         
-        response = chain(
+        response = chain.invoke( # chain() এর বদলে chain.invoke ব্যবহার করা ভালো
             {"input_documents": docs, "question": user_question},
             return_only_outputs=True
         )
@@ -73,7 +75,7 @@ def user_input(user_question):
     else:
         st.error("Vector store not found. Please upload and process a PDF first.")
 
-# ৭. মূল অ্যাপ ইন্টারফেস (Streamlit UI)
+# ৭. মূল অ্যাপ ইন্টারফেস
 def main():
     st.set_page_config(page_title="Chat with PDF", page_icon="💁")
     st.header("Chat with multiple PDF using Gemini 💁")
@@ -85,7 +87,7 @@ def main():
 
     with st.sidebar:
         st.title("Menu:")
-        pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button", accept_multiple_files=True)
+        pdf_docs = st.file_uploader("Upload your PDF Files", accept_multiple_files=True)
         if st.button("Submit & Process"):
             if pdf_docs:
                 with st.spinner("Processing..."):
@@ -95,7 +97,7 @@ def main():
                         get_vector_store(text_chunks)
                         st.success("Processing complete! You can now ask questions.")
                     else:
-                        st.error("Could not extract text from the uploaded PDFs.")
+                        st.error("Could not extract text.")
             else:
                 st.error("Please upload at least one PDF file.")
 
