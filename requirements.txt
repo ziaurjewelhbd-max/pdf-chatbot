@@ -1,10 +1,13 @@
 streamlit
 PyPDF2
-langchain==0.2.11
-langchain-core==0.2.11
-langchain-community==0.2.11
-langchain-google-genai>=1.0.5
+
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+
 faiss-cpu
+
 google-generativeai
 python-dotenv
 tiktoken
