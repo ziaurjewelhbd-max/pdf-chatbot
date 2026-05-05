@@ -6,7 +6,6 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
-from langchain.prompts import PromptTemplate
 
 # ১. Streamlit secrets থেকে API Key লোড করা (এটি অনলাইনে হোস্ট করার জন্য নিরাপদ)
 # যদি লোকাললি বা কোডস্পেসে ট্রাই করেন, তবে secrets এর বদলে সরাসরি "YOUR_API_KEY" বসাতে পারেন
